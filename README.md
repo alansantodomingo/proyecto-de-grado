@@ -13,9 +13,23 @@ Sistema web para la gestión de citas médicas que integra un chatbot conversaci
 - [Flujo del chatbot](#flujo-del-chatbot)
 - [API REST](#api-rest)
 - [Requisitos previos](#requisitos-previos)
-- [Instalación y ejecución](#instalación-y-ejecución)
+- [Instalación y ejecución local](#instalación-y-ejecución-local)
 - [Variables de entorno](#variables-de-entorno)
-- [Despliegue en producción](#despliegue-en-producción)
+- [Despliegue en producción (AWS Lightsail)](#despliegue-en-producción-aws-lightsail)
+  - [Especificaciones de la instancia](#especificaciones-de-la-instancia)
+  - [Preparación del servidor](#preparación-del-servidor)
+  - [Configuración del repositorio privado](#configuración-del-repositorio-privado)
+  - [Configuración del archivo .env en producción](#configuración-del-archivo-env-en-producción)
+  - [Primer arranque](#primer-arranque)
+  - [Apertura de puertos en el firewall](#apertura-de-puertos-en-el-firewall)
+  - [Vinculación de WhatsApp](#vinculación-de-whatsapp)
+- [Integración Continua y Despliegue Continuo (CI/CD)](#integración-continua-y-despliegue-continuo-cicd)
+  - [Flujo del pipeline](#flujo-del-pipeline)
+  - [Configuración de la llave SSH](#configuración-de-la-llave-ssh)
+  - [GitHub Secrets requeridos](#github-secrets-requeridos)
+  - [Workflow de GitHub Actions](#workflow-de-github-actions)
+  - [Cómo realizar un despliegue](#cómo-realizar-un-despliegue)
+- [Consideraciones de producción](#consideraciones-de-producción)
 
 ---
 
@@ -62,6 +76,8 @@ El backend actúa como nodo central: expone la API REST al panel de administraci
 | Base de datos | PostgreSQL | 15 |
 | Autenticación | JSON Web Tokens (JWT) | - |
 | Contenedores | Docker + Docker Compose | - |
+| CI/CD | GitHub Actions | - |
+| Infraestructura | AWS Lightsail | Ubuntu 22.04 LTS |
 
 ---
 
@@ -69,32 +85,41 @@ El backend actúa como nodo central: expone la API REST al panel de administraci
 
 ```
 agendamiento-de-citas/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml          # Pipeline CI/CD — despliega automáticamente en cada push a master
 ├── docker-compose.yml          # Orquestación de los tres servicios
 ├── .env                        # Variables de entorno (no versionado)
+├── .env.example                # Plantilla de variables de entorno
 │
 ├── client/                     # Aplicación frontend (React + Vite)
 │   ├── Dockerfile
 │   ├── vite.config.js
 │   └── src/
-│       └── index.css           # Estilos globales con Tailwind
+│       ├── api/index.js        # Cliente Axios — URL dinámica según hostname
+│       ├── context/
+│       │   ├── AuthContext.jsx     # Gestión de sesión JWT
+│       │   └── SocketContext.jsx   # Conexión Socket.IO global
+│       └── components/
+│           ├── whatsapp/           # Pantalla de vinculación QR
+│           ├── appointments/       # Gestión de citas
+│           ├── doctors/            # Gestión de médicos
+│           ├── specialties/        # Gestión de especialidades
+│           └── chat/               # Historial de mensajes WhatsApp
 │
 └── server/                     # Aplicación backend (Node.js)
     ├── Dockerfile
     └── src/
         ├── index.js            # Punto de entrada: Express, Socket.IO, cliente WhatsApp
-        │
         ├── db/
         │   ├── index.js        # Pool de conexiones pg
         │   ├── schema.js       # DDL: creación de tablas e índices
         │   └── seed.js         # Usuario administrador inicial
-        │
         ├── middlewares/
         │   └── authMiddleware.js   # Verificación de JWT en rutas protegidas
-        │
         ├── services/
         │   ├── AIService.js        # Integración con Groq, gestión de contexto, fallback de modelos
         │   └── AvailabilityService.js  # Cálculo de slots disponibles por médico y fecha
-        │
         └── modules/
             ├── auth/               # Login, emisión y verificación de tokens
             ├── appointments/       # CRUD de citas, confirmaciones, lógica de no-show
@@ -194,13 +219,13 @@ Todas las rutas protegidas requieren el header `Authorization: Bearer <token>`.
 
 ---
 
-## Instalación y ejecución
+## Instalación y ejecución local
 
 ### 1. Clonar el repositorio
 
 ```bash
-git clone <url-del-repositorio>
-cd agendamiento-de-citas
+git clone https://github.com/alansantodomingo/proyecto-de-grado.git
+cd proyecto-de-grado
 ```
 
 ### 2. Configurar variables de entorno
@@ -213,18 +238,23 @@ cp .env.example .env
 ### 3. Levantar los servicios
 
 ```bash
-docker compose up --build
+docker-compose up --build
 ```
 
 El primer arranque tarda algunos minutos mientras Puppeteer descarga Chromium dentro del contenedor.
 
 ### 4. Vincular WhatsApp
 
-Una vez que el backend esté en ejecución, acceder al panel en `http://localhost:5173` y escanear el código QR con la app de WhatsApp (`Dispositivos vinculados → Vincular dispositivo`).
+Acceder al panel en `http://localhost:5173`, iniciar sesión y escanear el código QR con la app de WhatsApp en `Dispositivos vinculados → Vincular dispositivo`.
 
-### 5. Acceso al panel de administración
+### 5. Credenciales por defecto del administrador
 
-Las credenciales del administrador inicial se generan automáticamente desde `server/src/db/seed.js`. Revisar ese archivo para obtener el email y contraseña por defecto.
+```
+Email:      admin@admin.com
+Contraseña: admin123
+```
+
+> Cambiar estas credenciales inmediatamente después del primer acceso en producción.
 
 ---
 
@@ -240,26 +270,254 @@ Las credenciales del administrador inicial se generan automáticamente desde `se
 | `GROQ_API_KEY` | API Key de Groq Cloud | `gsk_...` |
 | `GROQ_MODEL` | Modelo LLM principal | `llama-3.3-70b-versatile` |
 | `WHATSAPP_SESSION_PATH` | Ruta de persistencia de sesión | `./.wwebjs_auth` |
+| `VITE_API_URL` | URL del backend para el frontend | `http://<IP>:3001` |
 | `CHROME_PATH` | Ruta a Chromium (opcional) | `/usr/bin/chromium` |
 
-> En producción, nunca incluir el archivo `.env` en el repositorio. Usar variables de entorno del sistema o un gestor de secretos.
+> El archivo `.env` nunca debe versionarse. Está incluido en `.gitignore`.
 
 ---
 
-## Despliegue en producción
+## Despliegue en producción (AWS Lightsail)
 
-### Recomendaciones para AWS Lightsail
+### Especificaciones de la instancia
 
-1. Crear una instancia Ubuntu 22.04 LTS con mínimo **4 GB de RAM** (Puppeteer/Chromium requiere recursos adicionales).
-2. Instalar Docker y Docker Compose en la instancia.
-3. Subir el proyecto (sin `node_modules`, sin `.wwebjs_auth`, sin `.env`).
-4. Crear el archivo `.env` directamente en el servidor con credenciales de producción.
-5. Configurar un reverse proxy (Nginx) para exponer el backend en el puerto 443 con certificado SSL.
-6. Abrir los puertos 80 y 443 en el firewall de Lightsail.
-7. Ejecutar `docker compose up -d --build` para iniciar en segundo plano.
+| Parámetro | Valor |
+|-----------|-------|
+| Proveedor | AWS Lightsail |
+| Nombre | PG-II |
+| Sistema operativo | Ubuntu 22.04 LTS |
+| Plan | 4 GB RAM / 2 vCPU / 80 GB SSD |
+| IP pública | 54.172.179.80 |
+| Región | us-east-1 (Virginia) |
 
-### Consideraciones adicionales
+Se requieren mínimo 4 GB de RAM porque Puppeteer/Chromium (usado por whatsapp-web.js) consume entre 500 MB y 1.5 GB por sí solo, sumado a Node.js y PostgreSQL corriendo en paralelo.
 
-- La sesión de WhatsApp se persiste en un volumen Docker (`whatsapp_session`). Al destruir y recrear los contenedores, la sesión se mantiene siempre que el volumen no sea eliminado.
-- El job de no-shows se ejecuta cada 5 minutos mediante `setInterval` dentro del proceso principal. En un entorno de alta disponibilidad, considerar migrar esta lógica a un job externo (cron, BullMQ) para evitar duplicación en escenarios multi-instancia.
-- La clave `GROQ_API_KEY` expuesta en el repositorio en el `.env` de ejemplo debe rotarse inmediatamente antes de hacer el repositorio público.
+---
+
+### Preparación del servidor
+
+Conectarse a la instancia vía SSH o desde el terminal web de Lightsail y ejecutar:
+
+```bash
+# Actualizar paquetes
+sudo apt update && sudo apt upgrade -y
+
+# Instalar Docker
+sudo apt install -y docker.io
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker ubuntu
+newgrp docker
+
+# Instalar Docker Compose standalone
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" \
+  -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+docker-compose --version
+```
+
+---
+
+### Configuración del repositorio privado
+
+El repositorio es privado, por lo que el clone requiere autenticación mediante un Personal Access Token (classic) de GitHub con scope `repo`:
+
+```bash
+git clone https://<usuario>:<TOKEN>@github.com/alansantodomingo/proyecto-de-grado.git
+cd proyecto-de-grado
+
+# Guardar las credenciales en la URL del remote para los git pull del CI/CD
+git remote set-url origin https://<usuario>:<TOKEN>@github.com/alansantodomingo/proyecto-de-grado.git
+```
+
+---
+
+### Configuración del archivo .env en producción
+
+Crear el archivo `.env` directamente en el servidor (nunca subir este archivo al repositorio):
+
+```bash
+cat > .env << 'EOF'
+PORT=3001
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=scheduling_db
+DB_URL=postgresql://postgres:postgres@db:5432/scheduling_db
+WHATSAPP_SESSION_PATH=./.wwebjs_auth
+GROQ_API_KEY=<tu_api_key_de_groq>
+GROQ_MODEL=llama-3.3-70b-versatile
+VITE_API_URL=http://54.172.179.80:3001
+EOF
+```
+
+La variable `VITE_API_URL` es crítica en producción: le indica al frontend la dirección pública del backend. Sin ella, el navegador del cliente intentaría conectarse a `localhost:3001` en su propia máquina en lugar del servidor.
+
+---
+
+### Primer arranque
+
+```bash
+cd ~/proyecto-de-grado
+docker-compose up --build -d
+```
+
+El proceso tarda entre 5 y 10 minutos la primera vez. Los contenedores que deben quedar en estado `Healthy` o `Started` son:
+
+```
+✔ scheduling-db        Healthy
+✔ scheduling-backend   Healthy
+✔ scheduling-frontend  Started
+```
+
+---
+
+### Apertura de puertos en el firewall
+
+En la consola de Lightsail: `Instancia PG-II → Redes → Firewall → Agregar regla`.
+
+| Puerto | Protocolo | Propósito |
+|--------|-----------|-----------|
+| 5173 | TCP | Frontend (React/Vite) |
+| 3001 | TCP | Backend API y Socket.IO |
+
+---
+
+### Vinculación de WhatsApp
+
+1. Acceder a `http://54.172.179.80:5173`
+2. Iniciar sesión con las credenciales del administrador
+3. Esperar a que Puppeteer inicialice Chromium y genere el código QR (puede tomar 1-2 minutos)
+4. Escanear el QR desde WhatsApp en `Dispositivos vinculados → Vincular dispositivo`
+5. Una vez autenticado, el panel principal queda disponible
+
+La sesión de WhatsApp se persiste en el volumen Docker `whatsapp_session`, por lo que sobrevive reinicios de contenedores.
+
+---
+
+## Integración Continua y Despliegue Continuo (CI/CD)
+
+El proyecto usa **GitHub Actions** para automatizar el despliegue cada vez que se hace push a la rama `master`. El pipeline se conecta al servidor vía SSH y ejecuta `git pull` + `docker-compose up --build -d` de forma automática.
+
+### Flujo del pipeline
+
+```
+Push a master
+      │
+      ▼
+GitHub Actions Runner (ubuntu-latest)
+      │
+      ├── 1. Setup SSH key (decodifica la llave desde base64)
+      │
+      └── 2. Deploy via SSH
+               │
+               ▼
+         Servidor Lightsail
+               │
+               ├── git pull origin master
+               ├── docker-compose down
+               ├── docker-compose up --build -d
+               └── docker system prune -f
+```
+
+---
+
+### Configuración de la llave SSH
+
+Para que GitHub Actions pueda autenticarse en el servidor sin contraseña, se genera un par de llaves ED25519 dedicado:
+
+```bash
+# En el servidor Lightsail
+ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions -N ""
+
+# Autorizar la llave pública en el servidor
+cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+# Obtener la llave privada en base64 (formato requerido por el secret de GitHub)
+cat ~/.ssh/github_actions | base64 -w 0
+```
+
+El output del último comando (una línea en base64) es el valor que se almacena en el secret `LIGHTSAIL_SSH_KEY`.
+
+> Se usa base64 porque GitHub Secrets a veces elimina los saltos de línea al almacenar claves PEM, lo que corrompe el formato. El workflow decodifica la llave antes de usarla.
+
+---
+
+### GitHub Secrets requeridos
+
+Los secrets se configuran en: `Repositorio → Settings → Secrets and variables → Actions → New repository secret`
+
+| Secret | Valor | Descripción |
+|--------|-------|-------------|
+| `LIGHTSAIL_HOST` | `54.172.179.80` | IP pública de la instancia |
+| `LIGHTSAIL_USER` | `ubuntu` | Usuario SSH de la instancia |
+| `LIGHTSAIL_SSH_KEY` | `LS0tLS1CRUdJT...` | Llave privada ED25519 en base64 |
+
+> El token de GitHub usado para el push del workflow requiere los scopes `repo` y `workflow`.
+
+---
+
+### Workflow de GitHub Actions
+
+Archivo: `.github/workflows/deploy.yml`
+
+```yaml
+name: Deploy to AWS Lightsail
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    name: SSH & Docker Compose Up
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" | base64 -d > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} '
+            cd ~/proyecto-de-grado &&
+            git pull origin master &&
+            docker-compose down &&
+            docker-compose up --build -d &&
+            docker system prune -f --volumes=false &&
+            echo "Deploy completado: $(date)"
+          '
+```
+
+**Por qué SSH nativo y no `appleboy/ssh-action`:** la acción de appleboy corre en su propio contenedor Docker dentro del runner, lo que crea un entorno de archivos aislado que no tiene acceso al archivo de llave creado en pasos anteriores. El SSH nativo del runner sí tiene acceso directo al sistema de archivos.
+
+---
+
+### Cómo realizar un despliegue
+
+Cualquier push a la rama `master` dispara el pipeline automáticamente:
+
+```bash
+git add .
+git commit -m "descripción del cambio"
+git push origin master
+```
+
+El estado del despliegue se puede monitorear en:
+`github.com/alansantodomingo/proyecto-de-grado → Actions`
+
+Un despliegue típico tarda entre 2 y 5 minutos dependiendo de si hay cambios que requieran reconstruir las imágenes Docker.
+
+---
+
+## Consideraciones de producción
+
+- **Sesión de WhatsApp:** se persiste en el volumen Docker `whatsapp_session`. Nunca eliminar este volumen a menos que se quiera desvincular el número. Al hacer `docker-compose down` sin `-v` la sesión se conserva.
+- **No-shows:** el job de detección de no-shows se ejecuta cada 5 minutos mediante `setInterval` dentro del proceso principal. En un entorno multi-instancia, esto causaría ejecuciones duplicadas — migrar a un job externo si se escala horizontalmente.
+- **SSL:** actualmente el sistema corre sobre HTTP. Para producción real se recomienda configurar Nginx como reverse proxy con certificado SSL de Let's Encrypt, apuntando los puertos 80/443 a los servicios internos.
+- **Credenciales por defecto:** cambiar el usuario `admin@admin.com` / `admin123` inmediatamente tras el primer despliegue.
+- **Groq API Key:** rotar la key si el repositorio se hace público en algún momento.
