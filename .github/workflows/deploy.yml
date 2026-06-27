@@ -10,23 +10,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup SSH key
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" | base64 -d > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" | base64 -d > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.LIGHTSAIL_HOST }}
-          username: ${{ secrets.LIGHTSAIL_USER }}
-          key_path: ~/.ssh/deploy_key
-          port: 22
-          script: |
-            cd ~/proyecto-de-grado
-            git pull origin master
-            docker-compose down
-            docker-compose up --build -d
-            docker system prune -f --volumes=false
+      - name: Deploy
+        run: |
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} '
+            cd ~/proyecto-de-grado &&
+            git pull origin master &&
+            docker-compose down &&
+            docker-compose up --build -d &&
+            docker system prune -f --volumes=false &&
             echo "Deploy completado: $(date)"
+          '
