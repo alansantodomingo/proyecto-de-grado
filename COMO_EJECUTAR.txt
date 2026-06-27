@@ -1,0 +1,91 @@
+===========================================================
+  SISTEMA DE AGENDAMIENTO DE CITAS - INSTRUCCIONES DE USO
+===========================================================
+
+REQUISITOS
+----------
+- Docker Desktop instalado y corriendo
+- Conexión a internet (para la IA con Groq)
+
+
+CÓMO EJECUTAR
+-------------
+
+1. Abre una terminal (PowerShell o CMD) en la carpeta del proyecto:
+   c:\Users\ACER\OneDrive\Escritorio\Ideon Company\agendamiento de citas
+
+2. Ejecuta el siguiente comando:
+
+      docker compose up
+
+   La primera vez tardará varios minutos porque descarga las imágenes.
+   Para reconstruir si hubo cambios en el código:
+
+      docker compose up --build
+
+3. Espera hasta ver estos mensajes en la consola:
+   - "VITE v5.x  ready in ... ms"  → frontend listo
+   - "Server running on port 3001" → backend listo
+   - Código QR en pantalla         → WhatsApp listo para vincular
+
+
+VINCULAR WHATSAPP
+-----------------
+1. Abre http://localhost:5173 en tu navegador
+2. Inicia sesión con:
+   - Email:     admin@admin.com
+   - Contraseña: admin123
+3. Verás el código QR en pantalla
+4. Abre WhatsApp en tu celular → Dispositivos vinculados → Vincular dispositivo
+5. Escanea el código QR
+6. Cuando diga "Estado: Listo" el bot ya está activo
+
+
+ACCESO AL PANEL
+---------------
+- URL:        http://localhost:5173
+- Email:      admin@admin.com
+- Contraseña: admin123
+
+
+DETENER EL SISTEMA
+------------------
+En la terminal donde corre Docker, presiona:
+
+   Ctrl + C
+
+Para detener y limpiar contenedores:
+
+   docker compose down
+
+
+SOLUCIÓN DE PROBLEMAS
+---------------------
+
+Error "port 3001 already in use":
+  → Ya tienes el servidor corriendo localmente con npm run dev
+  → Detén ese proceso antes de usar Docker
+
+Error "Bad response from Docker engine":
+  → Docker Desktop se colgó. Ciérralo, espera y ábrelo de nuevo.
+  → Luego corre: docker compose down
+  → Luego corre: docker compose up --build
+
+Bot no responde en WhatsApp:
+  → Verifica que en el panel diga "Estado: conectado"
+  → Si dice "desconectado", recarga la página y vuelve a escanear el QR
+
+El bot está desactivado para un chat:
+  → Escribe "activar bot" en ese chat de WhatsApp
+
+Reiniciar conversación del bot:
+  → Escribe "reiniciar" en WhatsApp
+
+
+ESTRUCTURA DEL SISTEMA
+----------------------
+- Frontend (React):  http://localhost:5173
+- Backend (Node.js): http://localhost:3001
+- Base de datos:     PostgreSQL en puerto 5432 (solo interno)
+
+===========================================================

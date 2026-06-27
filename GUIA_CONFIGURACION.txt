@@ -1,0 +1,72 @@
+PASOS PARA EJECUTAR EL PROYECTO (SIN DOCKER) Y CONECTAR LA BASE DE DATOS
+==========================================================================
+
+Este proyecto puede ejecutarse localmente en Windows sin necesidad de Docker. Sigue estos pasos detallados:
+
+1. REQUISITOS PREVIOS
+---------------------
+* Instalar Node.js (Versión 18 o superior): https://nodejs.org/
+* Instalar PostgreSQL: https://www.postgresql.org/download/windows/
+  - Durante la instalación, recuerda la contraseña que asignes al usuario 'postgres'.
+* Instalar DBeaver (Editor de Base de Datos): https://dbeaver.io/download/
+
+2. CONFIGURACIÓN DE LA BASE DE DATOS
+------------------------------------
+* Abre "pgAdmin 4" o usa la terminal de PostgreSQL.
+* Crea una nueva base de datos llamada: scheduling_db
+
+3. CONFIGURACIÓN DEL BACKEND (SERVIDOR)
+---------------------------------------
+* Ve a la carpeta 'server'.
+* Crea un archivo llamado '.env' (puedes copiar el contenido de '.env.example').
+* Asegúrate de que las credenciales coincidan con tu instalación local de PostgreSQL:
+  DB_USER=postgres
+  DB_PASSWORD=tu_contraseña_aqui
+  DB_NAME=scheduling_db
+  DB_HOST=localhost
+  DB_PORT=5432
+  JWT_SECRET=tu_secreto_seguro
+  PORT=3001
+
+* Abre una terminal en la carpeta 'server' y ejecuta:
+  npm install
+  npx puppeteer browsers install chrome (Esto descarga el navegador para el bot de WhatsApp)
+  npm run dev
+
+4. CONFIGURACIÓN DEL FRONTEND (CLIENTE)
+---------------------------------------
+* Ve a la carpeta 'client'.
+* Abre una terminal y ejecuta:
+  npm install
+  npm run dev
+
+* El panel administrativo estará disponible en: http://localhost:5173
+
+CREDENCIALES POR DEFECTO:
+-------------------------
+- Email: admin@admin.com
+- Contraseña: admin123
+
+5. CÓMO CONECTAR DBEAVER A LA BASE DE DATOS
+-------------------------------------------
+Si estás usando la base de datos instalada en tu Windows (sin Docker):
+1. Abre DBeaver.
+2. Haz clic en "Nueva Conexión" (icono de enchufe con un +).
+3. Selecciona "PostgreSQL".
+4. Configura los siguientes datos:
+   - Host: localhost
+   - Puerto: 5432
+   - Base de datos: scheduling_db
+   - Usuario: postgres
+   - Contraseña: (la que pusiste al instalar PostgreSQL)
+5. Haz clic en "Probar conexión". Si es exitosa, dale a Finalizar.
+
+NOTA SOBRE DOCKER:
+-----------------
+Si en el futuro instalas Docker y quieres usarlo:
+* El archivo 'docker-compose.yml' ya tiene expuesto el puerto 5432 para que DBeaver pueda entrar.
+* La configuración en DBeaver sería exactamente la misma: localhost:5432.
+
+REFACCIÓN DEL CÓDIGO:
+--------------------
+He reorganizado el archivo App.jsx (que era muy grande) en componentes separados dentro de la carpeta 'client/src/components' para que el proyecto sea mucho más fácil de entender y mantener.
